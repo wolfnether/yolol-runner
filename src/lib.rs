@@ -17,7 +17,7 @@ pub struct YololRunner {
     globals: Vec<Field>,
     locals: Vec<Field>,
     pc: usize,
-    path:String,
+    path: String,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -384,7 +384,7 @@ impl CodeRunner for YololRunner {
                 .split("\n")
                 .map(|s| s.to_string())
                 .collect(); //yolol_parser::root(&file).unwrap();
-            return Some(*self);
+            return Some(());
         }
         None
     }
@@ -401,7 +401,7 @@ impl CodeRunner for YololRunner {
                 }
             }
         } else if let Err(err) = stmts {
-            println!("error {} line {}\n{}", self.path, self.pc+1, err);
+            println!("error {} line {}\n{}", self.path, self.pc + 1, err);
         }
         self.pc += 1;
     }
