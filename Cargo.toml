@@ -6,5 +6,5 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-"yolol-devices" = {path = '../yolol-devices'}
+"yolol-devices" = {git = 'https://github.com/wolfnether/yolol-devices'}
 "peg" = "0.7.0"
