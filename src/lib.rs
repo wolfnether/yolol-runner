@@ -1,5 +1,6 @@
 use std::fs::read_to_string;
 use std::ops::Add;
+use std::ops::Deref;
 use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Rem;
@@ -164,7 +165,7 @@ impl YololRunner {
     }
 
     fn get_local(&mut self, k: String) -> &mut Field {
-        if self.locals.iter().any(|f| f.name() == k) {
+        if self.locals.iter().any(|f| f.name().to_lowercase() == k.to_lowercase()) {
             for f in &mut self.locals {
                 if f.name() == k {
                     return f;
@@ -180,7 +181,7 @@ impl YololRunner {
     }
 
     fn get_global(&mut self, k: String) -> &mut Field {
-        if self.globals.iter().any(|f| f.name() == k) {
+        if self.globals.iter().any(|f| f.name().to_lowercase() == k.to_lowercase()) {
             for f in &mut self.globals {
                 if f.name() == k {
                     return f;
@@ -236,8 +237,8 @@ impl YololRunner {
     }
     fn process_expr(&mut self, token: &Tree) -> Option<YololValue> {
         match token {
-            Tree::LocalVariable(v) => Some(self.get_local(v.clone()).clone()),
-            Tree::GlobalVariable(v) => Some(self.get_global(v.clone()).clone()),
+            Tree::LocalVariable(v) => Some(self.get_local(v.clone()).deref().deref().clone()),
+            Tree::GlobalVariable(v) => Some(self.get_global(v.clone()).deref().deref().clone()),
             Tree::Numerical(v) => Some(YololInt::new_raw(*v).into()),
             Tree::String(v) => Some(v.as_str().into()),
             Tree::Or(r, l) => Some(self.process_expr(r)?.or(self.process_expr(l)?)),
@@ -273,7 +274,7 @@ impl YololRunner {
                     Tree::GlobalVariable(v) => self.get_global(v.to_string()),
                     _ => unreachable!(),
                 };
-                let v = field.clone().add(v);
+                let v = (*field).deref().clone().add(v);
                 **field = v;
                 Some(YololValue::default())
             }
@@ -285,7 +286,7 @@ impl YololRunner {
                     Tree::GlobalVariable(v) => self.get_global(v.to_string()),
                     _ => unreachable!(),
                 };
-                let v = field.clone().sub(v);
+                let v = (*field).deref().clone().sub(v);
                 **field = v?;
                 Some(YololValue::default())
             }
@@ -297,7 +298,7 @@ impl YololRunner {
                     Tree::GlobalVariable(v) => self.get_global(v.to_string()),
                     _ => unreachable!(),
                 };
-                let v = field.clone().mul(v);
+                let v = (*field).deref().clone().mul(v);
                 **field = v?;
                 Some(YololValue::default())
             }
@@ -309,7 +310,7 @@ impl YololRunner {
                     Tree::GlobalVariable(v) => self.get_global(v.to_string()),
                     _ => unreachable!(),
                 };
-                let v = field.clone().div(v);
+                let v = (*field).deref().clone().div(v);
                 **field = v?;
                 Some(YololValue::default())
             }
@@ -321,7 +322,7 @@ impl YololRunner {
                     Tree::GlobalVariable(v) => self.get_global(v.to_string()),
                     _ => unreachable!(),
                 };
-                let v = field.clone().rem(v);
+                let v = (*field).deref().clone().rem(v);
                 **field = v?;
                 Some(YololValue::default())
             }
@@ -404,5 +405,13 @@ impl CodeRunner for YololRunner {
             println!("error {} line {}\n{}", self.path, self.pc + 1, err);
         }
         self.pc += 1;
+    }
+
+    fn update_globals(&mut self, globals: Vec<Field>) {
+        self.globals = globals;
+    }
+
+    fn get_global(&self) -> Vec<Field> {
+        self.globals.clone()
     }
 }
