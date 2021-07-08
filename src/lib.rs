@@ -141,7 +141,7 @@ peg::parser! {
 
         rule comment() -> Tree = "//" c:$(([^'\n']/ [^_])* ) {Tree::Comment(c.to_string())}
         rule variable() -> Tree =
-            ":" s:$(b:alphanumeric()*) ) {Tree::GlobalVariable(s.to_string())}
+            ":" s:$(b:alphanumeric()*) {Tree::GlobalVariable(s.to_string())}
             / !("if" / "end"/ "goto" ) s:$((a:alpha() b:alphanumeric()*)) {Tree::LocalVariable(s.to_string())}
         rule litteral() -> Tree =
             "-" d:$(digit()*) "." r:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();let r: i64 = match r.len() {1 => r.parse::<i64>().unwrap() * 100,2 => r.parse::<i64>().unwrap() * 10,_ => r[0..r.len().min(3)].parse().unwrap(),};Tree::Numerical((d * 1000).saturating_sub(r))}
