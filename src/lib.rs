@@ -376,7 +376,7 @@ impl YololRunner {
 }
 
 impl CodeRunner for YololRunner {
-    fn parse(&mut self, path: &str) {
+    fn parse(&mut self, path: &str) -> Option<()> {
         self.path = path.to_string();
         if let Ok(file) = read_to_string(path) {
             self.lines = file
@@ -384,7 +384,9 @@ impl CodeRunner for YololRunner {
                 .split("\n")
                 .map(|s| s.to_string())
                 .collect(); //yolol_parser::root(&file).unwrap();
+            return Some(*self);
         }
+        None
     }
 
     fn step(&mut self) {
