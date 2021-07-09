@@ -1,12 +1,6 @@
 mod ast;
 mod parser;
 use std::fs::read_to_string;
-use std::ops::Add;
-use std::ops::Deref;
-use std::ops::Div;
-use std::ops::Mul;
-use std::ops::Rem;
-use std::ops::Sub;
 
 use ast::Tree;
 use parser::yolol_parser;
@@ -85,9 +79,7 @@ impl YololRunner {
                 let v = &self.process_expr(p)?;
                 if v.into() {
                     for stmt in s {
-                        if self.process(stmt).is_none() {
-                            return None;
-                        }
+                        self.process(stmt)?;
                     }
                 }
                 Some(())
@@ -112,7 +104,7 @@ impl YololRunner {
             Tree::GlobalVariable(v) => self.get_global(v.clone()),
             t => unreachable!("process_assing : {:?}", t),
         };
-        **field = value.clone();
+        **field = value;
         Some(())
     }
     fn process_expr(&mut self, token: &Tree) -> Option<YololValue> {
@@ -123,13 +115,13 @@ impl YololRunner {
             Tree::String(v) => Some(v.as_str().into()),
             Tree::Or(r, l) => Some(self.process_expr(r)?.or(&self.process_expr(l)?)),
             Tree::And(r, l) => Some(self.process_expr(r)?.and(&self.process_expr(l)?)),
-            Tree::Eq(r, l) => Some((&self.process_expr(r)? == &self.process_expr(l)?).into()),
-            Tree::Ne(r, l) => Some((&self.process_expr(r)? != &self.process_expr(l)?).into()),
-            Tree::Gt(r, l) => Some((&self.process_expr(r)? > &self.process_expr(l)?).into()),
-            Tree::Lt(r, l) => Some((&self.process_expr(r)? < &self.process_expr(l)?).into()),
-            Tree::Gte(r, l) => Some((&self.process_expr(r)? >= &self.process_expr(l)?).into()),
-            Tree::Lte(r, l) => Some((&self.process_expr(r)? <= &self.process_expr(l)?).into()),
-            Tree::Add(r, l) => Some((&self.process_expr(r)? + &self.process_expr(l)?).into()),
+            Tree::Eq(r, l) => Some((self.process_expr(r)? == self.process_expr(l)?).into()),
+            Tree::Ne(r, l) => Some((self.process_expr(r)? != self.process_expr(l)?).into()),
+            Tree::Gt(r, l) => Some((self.process_expr(r)? > self.process_expr(l)?).into()),
+            Tree::Lt(r, l) => Some((self.process_expr(r)? < self.process_expr(l)?).into()),
+            Tree::Gte(r, l) => Some((self.process_expr(r)? >= self.process_expr(l)?).into()),
+            Tree::Lte(r, l) => Some((self.process_expr(r)? <= self.process_expr(l)?).into()),
+            Tree::Add(r, l) => Some(&self.process_expr(r)? + &self.process_expr(l)?),
             Tree::Sub(r, l) => &self.process_expr(r)? - &self.process_expr(l)?,
             Tree::Mul(r, l) => &self.process_expr(r)? * &self.process_expr(l)?,
             Tree::Div(r, l) => &self.process_expr(r)? / &self.process_expr(l)?,
@@ -257,7 +249,7 @@ impl CodeRunner for YololRunner {
         if let Ok(file) = read_to_string(path) {
             self.lines = file
                 .replace("\r\n", "\n")
-                .split("\n")
+                .split('\n')
                 .map(|s| s.to_string())
                 .collect(); //yolol_parser::root(&file).unwrap();
             return Some(());
