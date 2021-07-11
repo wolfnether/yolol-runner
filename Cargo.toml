@@ -2,6 +2,8 @@
 name = "yolol-runner"
 version = "0.2.1"
 edition = "2018"
+license-file = "LICENSE"
+description = "lib for parsing and running yolol script"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
