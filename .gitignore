@@ -13,3 +13,11 @@ Cargo.lock
 # Added by cargo
 
 /target
+
+# ignore vscode stuff
+
+.vscode
+
+#test file
+test.yolol
+src/main.rs
