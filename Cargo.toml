@@ -1,6 +1,6 @@
 [package]
 name = "yolol-runner"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2018"
 license-file = "LICENSE"
 description = "lib for parsing and running yolol script"
@@ -8,5 +8,5 @@ description = "lib for parsing and running yolol script"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-"yolol-devices" = "0.2.5"
+"yolol-devices" = "0.3.1"
 "peg" = "0.7.0"
