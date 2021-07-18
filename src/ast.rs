@@ -15,6 +15,7 @@ pub enum Tree {
     AssignMod(Box<Tree>, Box<Tree>),
     AssignExp(Box<Tree>, Box<Tree>),
     IfThen(Box<Tree>, Vec<Tree>),
+    IfThenElse(Box<Tree>, Vec<Tree>, Vec<Tree>),
     Goto(Box<Tree>),
     Or(Box<Tree>, Box<Tree>),
     And(Box<Tree>, Box<Tree>),

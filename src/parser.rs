@@ -17,7 +17,13 @@ peg::parser! {
         pub rule line() -> Vec<Tree> = s:(" "* s:stmt() {s})* " "* {s} //ls:( s:stmt() {s})* [_] {let mut s = vec![s]; s.append(&mut ls.clone());s}
         rule stmt() -> Tree = goto() / if_then_end() / (a:assignment() {a}) / comment() / expression()  // "" {Tree::Empty}
         rule goto() -> Tree = "goto" ss() e:expression() {Tree::Goto(e.into())}
-        rule if_then_end() -> Tree = "if" ss() p:expression() ss() "then" l:line() ss() "end" {Tree::IfThen(p.into(), l)}
+        rule if_then_end() -> Tree = "if" ss() p:expression() ss() "then" l:line() ss() e:("else" ss() l:line() ss() {l})? "end" {
+            if let Some(e) = e {
+                Tree::IfThenElse(p.into(), l, e)
+            } else {
+                Tree::IfThen(p.into(), l)
+            }
+        }
         rule assignment() -> Tree =
             l:variable() ss() "=" ss() r:expression() {Tree::Assign(l.into(), r.into())}
             / l:variable() ss() "+=" ss() r:expression() {Tree::AssignAdd(l.into(), r.into())}
