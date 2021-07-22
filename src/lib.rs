@@ -387,7 +387,7 @@ impl CodeRunner for YololRunner {
             self.pc = 0;
         }
 
-        let instructions = &    self.lines.clone()[self.pc];
+        let instructions = &self.lines.clone()[self.pc];
         if let Some(goto) = self.vm.run(instructions) {
             if let YololValue::Int(v) = goto {
                 let v: i64 = (&v).into();

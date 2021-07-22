@@ -10,10 +10,10 @@ fn main() -> Result<(), SystemTimeError> {
     //panic!("{:?}", runner);
     loop {
         let started = SystemTime::now();
-        for _ in 0..100_000_000 {
+        for _ in 0..1_000_000 {
             runner.step();
         }
-        let lps = 100_000_000.0 / started.elapsed().unwrap().as_secs_f64();
+        let lps = 1_000_000.0 / started.elapsed().unwrap().as_secs_f64();
         samples.push(lps);
         let avg = samples.iter().sum::<f64>() / samples.len() as f64;
 

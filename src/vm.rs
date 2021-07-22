@@ -46,7 +46,7 @@ pub struct VM {
     stack: VecDeque<YololValue>,
     instructions: Vec<Instruction>,
     ram: Vec<YololValue>,
-    pc: usize,
+    pc: isize,
 }
 
 impl VM {
@@ -57,7 +57,8 @@ impl VM {
 
     pub fn run(&mut self, instructions: &Vec<Instruction>) -> Option<YololValue> {
         self.stack.clear();
-        while let Some(instruction) = self.instructions.get(self.pc) {
+        self.pc = 0;
+        while let Some(instruction) = instructions.get(self.pc as usize) {
             match instruction {
                 Instruction::PushValue(value) => self.stack.push_back(value.clone()),
                 Instruction::Push(adress) => {
@@ -127,22 +128,22 @@ impl VM {
                 Instruction::Mul => {
                     let b = self.stack.pop_back()?;
                     let a = self.stack.pop_back()?;
-                    self.stack.push_back((&a - &b)?)
+                    self.stack.push_back((&a * &b)?)
                 }
                 Instruction::Div => {
                     let b = self.stack.pop_back()?;
                     let a = self.stack.pop_back()?;
-                    self.stack.push_back((&a - &b)?)
+                    self.stack.push_back((&a / &b)?)
                 }
                 Instruction::Mod => {
                     let b = self.stack.pop_back()?;
                     let a = self.stack.pop_back()?;
-                    self.stack.push_back((&a - &b)?)
+                    self.stack.push_back((&a % &b)?)
                 }
                 Instruction::Exp => {
                     let b = self.stack.pop_back()?;
                     let a = self.stack.pop_back()?;
-                    self.stack.push_back((&a - &b)?)
+                    self.stack.push_back(a.pow(&b)?);
                 }
                 Instruction::Abs => {
                     let v = self.stack.back()?;
@@ -191,10 +192,10 @@ impl VM {
                 Instruction::Dec => {
                     self.stack.back_mut()?.pre_dec()?;
                 }
-                Instruction::Jump1(i) => self.pc = *i,
+                Instruction::Jump1(i) => self.pc = *i as isize - 1,
                 Instruction::JumpFalse(i) => {
                     if self.stack.pop_back()? == true.into() {
-                        self.pc = *i
+                        self.pc = *i as isize - 1;
                     }
                 }
                 Instruction::Dup => {
@@ -204,6 +205,7 @@ impl VM {
                     self.stack.pop_back();
                 }
             }
+            self.pc += 1;
         }
         None
     }
