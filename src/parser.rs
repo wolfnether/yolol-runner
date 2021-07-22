@@ -1,4 +1,38 @@
+#![allow(clippy::all)]
+
 use crate::ast::Tree;
+use std::collections::BTreeMap;
+use lazy_static::lazy_static;
+use parking_lot::Mutex;
+
+lazy_static!{
+    pub static ref  GLOBAL:Mutex<BTreeMap<String,usize>> =  Mutex::new(BTreeMap::new());
+    pub static ref LOCAL:Mutex<BTreeMap<String,usize>> =  Mutex::new(BTreeMap::new());
+    pub static ref I: Mutex<usize> = Mutex::new(0);
+}
+
+
+fn get_local(key:&str) -> usize{
+    let key = &key.to_lowercase();
+    if LOCAL.lock().contains_key(key){
+        LOCAL.lock()[key]
+    } else {
+        LOCAL.lock().insert(key.to_string(), *I.lock());
+        *I.lock()+=1;
+        *I.lock()-1
+    }
+}
+
+fn get_global(key:&str) -> usize{
+    let key = &key.to_lowercase();
+    if GLOBAL.lock().contains_key(key){
+        GLOBAL.lock()[key]
+    } else {
+        GLOBAL.lock().insert(key.to_string(), *I.lock());
+        *I.lock()+=1;
+        *I.lock()-1
+    }
+}
 
 peg::parser! {
     pub grammar yolol_parser() for str{
@@ -78,8 +112,8 @@ peg::parser! {
 
         rule comment() -> Tree = "//" c:$(([^'\n']/ [^_])* ) {Tree::Comment(c.to_string())}
         rule variable() -> Tree =
-            ":" s:$(b:alphanumeric()*) {Tree::GlobalVariable(s.to_string())}
-            / !("if" / "end"/ "goto" ) s:$((a:alpha() b:alphanumeric()*)) {Tree::LocalVariable(s.to_string())}
+            ":" s:$(b:alphanumeric()*) {Tree::GlobalVariable(get_global(s))}
+            / !("if" / "end"/ "goto" ) s:$((a:alpha() b:alphanumeric()*)) {Tree::LocalVariable(get_local(s))}
         rule litteral() -> Tree =
             "-" d:$(digit()*) "." r:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();let r: i64 = match r.len() {1 => r.parse::<i64>().unwrap() * 100,2 => r.parse::<i64>().unwrap() * 10,_ => r[0..r.len().min(3)].parse().unwrap(),};Tree::Numerical((d * 1000).saturating_sub(r))}
             / "-" d:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();Tree::Numerical(d * 1000)}
