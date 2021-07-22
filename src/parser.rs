@@ -1,36 +1,35 @@
 #![allow(clippy::all)]
 
 use crate::ast::Tree;
-use std::collections::BTreeMap;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
+use std::collections::BTreeMap;
 
-lazy_static!{
-    pub static ref  GLOBAL:Mutex<BTreeMap<String,usize>> =  Mutex::new(BTreeMap::new());
-    pub static ref LOCAL:Mutex<BTreeMap<String,usize>> =  Mutex::new(BTreeMap::new());
+lazy_static! {
+    pub static ref GLOBAL: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+    pub static ref LOCAL: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
     pub static ref I: Mutex<usize> = Mutex::new(0);
 }
 
-
-fn get_local(key:&str) -> usize{
+fn get_local(key: &str) -> usize {
     let key = &key.to_lowercase();
-    if LOCAL.lock().contains_key(key){
+    if LOCAL.lock().contains_key(key) {
         LOCAL.lock()[key]
     } else {
         LOCAL.lock().insert(key.to_string(), *I.lock());
-        *I.lock()+=1;
-        *I.lock()-1
+        *I.lock() += 1;
+        *I.lock() - 1
     }
 }
 
-fn get_global(key:&str) -> usize{
+fn get_global(key: &str) -> usize {
     let key = &key.to_lowercase();
-    if GLOBAL.lock().contains_key(key){
+    if GLOBAL.lock().contains_key(key) {
         GLOBAL.lock()[key]
     } else {
         GLOBAL.lock().insert(key.to_string(), *I.lock());
-        *I.lock()+=1;
-        *I.lock()-1
+        *I.lock() += 1;
+        *I.lock() - 1
     }
 }
 

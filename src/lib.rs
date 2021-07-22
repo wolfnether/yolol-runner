@@ -1,5 +1,6 @@
 mod ast;
 mod parser;
+mod vm;
 
 use std::collections::BTreeMap;
 use std::fs::read_to_string;
@@ -7,6 +8,7 @@ use std::rc::Rc;
 
 use ast::Tree;
 use parser::yolol_parser;
+use vm::Instruction;
 use yolol_devices::devices::chip::CodeRunner;
 use yolol_devices::field::Field;
 use yolol_devices::value::ValueTrait;
@@ -21,42 +23,9 @@ pub struct YololRunner {
 }
 
 impl YololRunner {
-    /*/// Get a reference to the yolol runner's globals.
-    pub fn globals(&self) -> &[Field] {
-        self.globals.as_slice()
-    }
-
-    /// Get a reference to the yolol runner's locals.
-    pub fn locals(&self) -> &[Field] {
-        self.locals.as_slice()
-    }*/
-
-    /*///get local variables from VM
-    pub fn get_local(&mut self, k: &str) -> &mut YololValue {
-        let k = k.to_lowercase();
-        if self.locals.contains_key(&k) {
-            self.locals.get_mut(&k).unwrap()
-        } else {
-            let k = k.to_lowercase();
-            self.locals.insert(k.clone(), YololValue::default());
-            self.locals.get_mut(&k).unwrap()
-        }
-    }
-
-    ///get global variables from VM
-    pub fn get_global(&mut self, k: &str) -> &mut YololValue {
-        let k = k.to_lowercase();
-        if self.globals.contains_key(&k) {
-            self.globals.get_mut(&k).unwrap()
-        } else {
-            self.globals.insert(k.clone(), YololValue::default());
-            self.globals.get_mut(&k).unwrap()
-        }
-    }*/
-
-    fn process(&mut self, token: &Tree) -> Option<()> {
+    fn process(&mut self, token: &Tree) -> Vec<Instruction> {
         match token {
-            Tree::Error => None,
+            Tree::Error => vec![],
             Tree::Comment(_) => Some(()),
             Tree::Assign(r, l) => self.process_assing(r, l),
             Tree::IfThen(p, s) => {
@@ -84,7 +53,7 @@ impl YololRunner {
         let value = self.process_expr(l)?;
 
         let field = match r {
-            Tree::LocalVariable(v) | Tree::GlobalVariable(v)=> &mut self.variables[*v],
+            Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
             t => unreachable!("process_assing : {:?}", t),
         };
         *field = value;
@@ -158,7 +127,7 @@ impl YololRunner {
             Tree::AssignMul(r, l) => {
                 let v = self.process_expr(l)?;
                 let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) =>&mut self.variables[*v],
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
                     _ => unreachable!(),
                 };
                 *field = (&*field * &v)?;
@@ -178,7 +147,7 @@ impl YololRunner {
             Tree::AssignMod(r, l) => {
                 let v = self.process_expr(l)?;
                 let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) =>&mut self.variables[*v],
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
                     _ => unreachable!(),
                 };
                 *field = (&*field % &v)?;
@@ -188,7 +157,7 @@ impl YololRunner {
             Tree::AssignExp(r, l) => {
                 let v = self.process_expr(l)?;
                 let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) =>&mut self.variables[*v],
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
                     _ => unreachable!(),
                 };
                 let v = field.pow(&v);
@@ -198,7 +167,7 @@ impl YololRunner {
 
             Tree::PostInc(r) => {
                 let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) =>&mut self.variables[*v],
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
                     _ => unreachable!(),
                 };
                 Some(field.post_inc())
@@ -236,20 +205,16 @@ impl CodeRunner for YololRunner {
             self.lines = Rc::new(
                 file.replace("\r\n", "\n")
                     .split('\n')
-                    .map(|s| {
-                        let line = yolol_parser::line(s);
-                        if let Ok(line) = line {
-                            line
-                        } else if let Err(err) = line {
+                    .map(|s| match yolol_parser::line(s) {
+                        Ok(line) => line,
+                        Err(err) => {
                             println!("error {} line {}\n{}", self.path, self.pc + 1, err);
-                            vec![]
-                        } else {
                             vec![]
                         }
                     })
                     .collect(),
             );
-            for _ in 0..*crate::parser::I.lock(){
+            for _ in 0..*crate::parser::I.lock() {
                 self.variables.push(YololValue::default());
             }
             return Some(());
