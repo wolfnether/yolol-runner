@@ -2,7 +2,6 @@ mod ast;
 mod parser;
 mod vm;
 
-use std::collections::BTreeMap;
 use std::fs::read_to_string;
 use std::rc::Rc;
 
@@ -12,7 +11,6 @@ use vm::Instruction;
 use vm::VM;
 use yolol_devices::devices::chip::CodeRunner;
 use yolol_devices::field::Field;
-use yolol_devices::value::ValueTrait;
 use yolol_devices::value::YololValue;
 
 #[derive(Debug, Default)]
@@ -57,11 +55,10 @@ impl YololRunner {
     fn process_assing(&mut self, r: &Tree, l: &Tree) -> Vec<Instruction> {
         let mut value = self.process_expr(l);
 
-        let field = match r {
+        match r {
             Tree::LocalVariable(v) | Tree::GlobalVariable(v) => value.push(Instruction::Store(*v)),
             t => unreachable!("process_assing : {:?}", t),
         };
-
         value
     }
 
@@ -70,7 +67,7 @@ impl YololRunner {
             Tree::LocalVariable(v) => vec![Instruction::Push(*v)],
             Tree::GlobalVariable(v) => vec![Instruction::Push(*v)],
             Tree::Numerical(v) => vec![Instruction::PushValue((*v as f64 / 1000.).into())],
-            Tree::String(v) => vec![Instruction::PushValue((v.as_str().into()))],
+            Tree::String(v) => vec![Instruction::PushValue(v.as_str().into())],
             Tree::Or(r, l) => {
                 let mut a = self.process_expr(r);
                 let mut b = self.process_expr(l);
@@ -388,11 +385,10 @@ impl CodeRunner for YololRunner {
         }
 
         let instructions = &self.lines.clone()[self.pc];
-        if let Some(goto) = self.vm.run(instructions) {
-            if let YololValue::Int(v) = goto {
+        if let Some( YololValue::Int(v)) = self.vm.run(instructions) {
                 let v: i64 = (&v).into();
                 self.pc = v.clamp(0, 20) as usize;
-            }
+            
         }
         /* else if let Err(err) = stmts {
             println!("error {} line {}\n{}", self.path, self.pc + 1, err);

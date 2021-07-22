@@ -55,7 +55,7 @@ impl VM {
         self.stack.clear();
     }
 
-    pub fn run(&mut self, instructions: &Vec<Instruction>) -> Option<YololValue> {
+    pub fn run(&mut self, instructions: &[Instruction]) -> Option<YololValue> {
         self.stack.clear();
         self.pc = 0;
         while let Some(instruction) = instructions.get(self.pc as usize) {
@@ -74,7 +74,7 @@ impl VM {
                     }
                     self.ram[*adress] = self.stack.pop_back()?;
                 }
-                Instruction::Goto => return Some(self.stack.pop_back()?),
+                Instruction::Goto => return self.stack.pop_back(),
                 Instruction::Or => {
                     let b = self.stack.pop_back()?;
                     let a = self.stack.pop_back()?;
@@ -180,7 +180,7 @@ impl VM {
                 }
                 Instruction::Not => {
                     let v = self.stack.back()?;
-                    *self.stack.back_mut()? = v.not().into();
+                    *self.stack.back_mut()? = v.not();
                 }
                 Instruction::Fac => {
                     let v = self.stack.back()?;
