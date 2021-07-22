@@ -9,6 +9,7 @@ use std::rc::Rc;
 use ast::Tree;
 use parser::yolol_parser;
 use vm::Instruction;
+use vm::VM;
 use yolol_devices::devices::chip::CodeRunner;
 use yolol_devices::field::Field;
 use yolol_devices::value::ValueTrait;
@@ -16,182 +17,334 @@ use yolol_devices::value::YololValue;
 
 #[derive(Debug, Default)]
 pub struct YololRunner {
-    lines: Rc<Vec<Vec<Tree>>>,
+    lines: Rc<Vec<Vec<Instruction>>>,
     variables: Vec<YololValue>,
     pc: usize,
     path: String,
+    vm: VM,
 }
 
 impl YololRunner {
     fn process(&mut self, token: &Tree) -> Vec<Instruction> {
         match token {
             Tree::Error => vec![],
-            Tree::Comment(_) => Some(()),
+            Tree::Comment(_) => vec![],
             Tree::Assign(r, l) => self.process_assing(r, l),
             Tree::IfThen(p, s) => {
-                let v = &self.process_expr(p)?;
-                if v.into() {
-                    for stmt in s {
-                        self.process(stmt)?;
-                    }
-                }
-                Some(())
+                let mut p = self.process_expr(p);
+                let mut s = s
+                    .iter()
+                    .map(|s| self.process(s))
+                    .reduce(|mut a, mut b| {
+                        a.append(&mut b);
+                        a
+                    })
+                    .unwrap_or_default();
+                p.push(Instruction::JumpFalse(s.len()));
+                p.append(&mut s);
+                s
             }
             Tree::Goto(t) => {
-                if let YololValue::Int(v) = &self.process_expr(t)? {
-                    let pc: i64 = v.into();
-                    self.pc = (pc - 2).clamp(0, 20) as usize;
-                }
-                Some(())
+                let mut v = self.process_expr(t);
+                v.push(Instruction::Goto);
+                v
             }
-            Tree::Empty => Some(()),
-            t => self.process_expr(t).map(|_| ()),
+            Tree::Empty => vec![],
+            t => self.process_expr(t),
         }
     }
 
-    fn process_assing(&mut self, r: &Tree, l: &Tree) -> Option<()> {
-        let value = self.process_expr(l)?;
+    fn process_assing(&mut self, r: &Tree, l: &Tree) -> Vec<Instruction> {
+        let mut value = self.process_expr(l);
 
         let field = match r {
-            Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+            Tree::LocalVariable(v) | Tree::GlobalVariable(v) => value.push(Instruction::Store(*v)),
             t => unreachable!("process_assing : {:?}", t),
         };
-        *field = value;
-        Some(())
+
+        value
     }
 
-    fn process_expr(&mut self, token: &Tree) -> Option<YololValue> {
+    fn process_expr(&mut self, token: &Tree) -> Vec<Instruction> {
         match token {
-            Tree::LocalVariable(v) => Some(self.variables[*v].clone()),
-            Tree::GlobalVariable(v) => Some(self.variables[*v].clone()),
-            Tree::Numerical(v) => Some((*v as f64 / 1000.).into()),
-            Tree::String(v) => Some(v.as_str().into()),
-            Tree::Or(r, l) => Some(self.process_expr(r)?.or(&self.process_expr(l)?)),
-            Tree::And(r, l) => Some(self.process_expr(r)?.and(&self.process_expr(l)?)),
-            Tree::Eq(r, l) => Some(YololValue::from(
-                self.process_expr(r)? == self.process_expr(l)?,
-            )),
-            Tree::Ne(r, l) => Some(YololValue::from(
-                self.process_expr(r)? != self.process_expr(l)?,
-            )),
-            Tree::Gt(r, l) => Some(YololValue::from(
-                self.process_expr(r)? > self.process_expr(l)?,
-            )),
-            Tree::Lt(r, l) => Some(YololValue::from(
-                self.process_expr(r)? < self.process_expr(l)?,
-            )),
-            Tree::Gte(r, l) => Some(YololValue::from(
-                self.process_expr(r)? >= self.process_expr(l)?,
-            )),
-            Tree::Lte(r, l) => Some(YololValue::from(
-                self.process_expr(r)? <= self.process_expr(l)?,
-            )),
-            Tree::Add(r, l) => Some(&self.process_expr(r)? + &self.process_expr(l)?),
-            Tree::Sub(r, l) => &self.process_expr(r)? - &self.process_expr(l)?,
-            Tree::Mul(r, l) => &self.process_expr(r)? * &self.process_expr(l)?,
-            Tree::Div(r, l) => &self.process_expr(r)? / &self.process_expr(l)?,
-            Tree::Mod(r, l) => &self.process_expr(r)? % &self.process_expr(l)?,
-            Tree::Neg(l) => Some((&YololValue::from(-1) * &self.process_expr(l)?)?),
-            Tree::Fac(r) => Some(self.process_expr(r)?.fac()?),
-            Tree::Abs(r) => Some(self.process_expr(r)?.abs()?),
-            Tree::Sqrt(r) => Some(self.process_expr(r)?.sqrt()?),
-            Tree::Sin(r) => Some(self.process_expr(r)?.sin()?),
-            Tree::Asin(r) => Some(self.process_expr(r)?.asin()?),
-            Tree::Cos(r) => Some(self.process_expr(r)?.cos()?),
-            Tree::Acos(r) => Some(self.process_expr(r)?.acos()?),
-            Tree::Tan(r) => Some(self.process_expr(r)?.tan()?),
-            Tree::Atan(r) => Some(self.process_expr(r)?.atan()?),
-            Tree::Not(r) => Some(self.process_expr(r)?.not()),
-            Tree::Exp(r, l) => Some(self.process_expr(r)?.pow(&self.process_expr(l)?)?),
+            Tree::LocalVariable(v) => vec![Instruction::Push(*v)],
+            Tree::GlobalVariable(v) => vec![Instruction::Push(*v)],
+            Tree::Numerical(v) => vec![Instruction::PushValue((*v as f64 / 1000.).into())],
+            Tree::String(v) => vec![Instruction::PushValue((v.as_str().into()))],
+            Tree::Or(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Or);
+                b
+            }
+            Tree::And(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::And);
+                b
+            }
+            Tree::Eq(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Eq);
+                b
+            }
+            Tree::Ne(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Ne);
+                b
+            }
+            Tree::Gt(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Gt);
+                b
+            }
+            Tree::Lt(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Lt);
+                b
+            }
+            Tree::Gte(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Gte);
+                b
+            }
+            Tree::Lte(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Lte);
+                b
+            }
+            Tree::Add(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Add);
+                b
+            }
+            Tree::Sub(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Sub);
+                b
+            }
+            Tree::Mul(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Mul);
+                b
+            }
+            Tree::Div(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Div);
+                b
+            }
+            Tree::Mod(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Mod);
+                b
+            }
+            Tree::Neg(l) => {
+                let mut a = self.process_expr(l);
+                a.push(Instruction::PushValue(YololValue::from(-1)));
+                a.push(Instruction::Mul);
+                a
+            }
+            Tree::Fac(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Fac);
+                a
+            }
+            Tree::Abs(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Abs);
+                a
+            }
+            Tree::Sqrt(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Sqrt);
+                a
+            }
+            Tree::Sin(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Sin);
+                a
+            }
+            Tree::Asin(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Asin);
+                a
+            }
+            Tree::Cos(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Cos);
+                a
+            }
+            Tree::Acos(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Acos);
+                a
+            }
+            Tree::Tan(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Tan);
+                a
+            }
+            Tree::Atan(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Atan);
+                a
+            }
+            Tree::Not(r) => {
+                let mut a = self.process_expr(r);
+                a.push(Instruction::Not);
+                a
+            }
+            Tree::Exp(r, l) => {
+                let mut a = self.process_expr(r);
+                let mut b = self.process_expr(l);
+                b.append(&mut a);
+                b.push(Instruction::Exp);
+                b
+            }
 
             Tree::AssignAdd(r, l) => {
-                let v = self.process_expr(l)?;
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let mut v = self.process_expr(l);
+                let addr = match **r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => v,
                     _ => unreachable!(),
                 };
-                *field = &*field + &v;
-                Some(YololValue::default())
+                v.push(Instruction::Push(addr));
+                v.push(Instruction::Add);
+                v.push(Instruction::Store(addr));
+                v
             }
 
             Tree::AssignSub(r, l) => {
-                let v = self.process_expr(l)?;
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let mut v = self.process_expr(l);
+                let addr = match **r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => v,
                     _ => unreachable!(),
                 };
-                *field = (&*field - &v)?;
-                Some(YololValue::default())
+                v.push(Instruction::Push(addr));
+                v.push(Instruction::Sub);
+                v.push(Instruction::Store(addr));
+                v
             }
 
             Tree::AssignMul(r, l) => {
-                let v = self.process_expr(l)?;
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let mut v = self.process_expr(l);
+                let addr = match **r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => v,
                     _ => unreachable!(),
                 };
-                *field = (&*field * &v)?;
-                Some(YololValue::default())
+                v.push(Instruction::Push(addr));
+                v.push(Instruction::Mul);
+                v.push(Instruction::Store(addr));
+                v
             }
 
             Tree::AssignDiv(r, l) => {
-                let v = self.process_expr(l)?;
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let mut v = self.process_expr(l);
+                let addr = match **r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => v,
                     _ => unreachable!(),
                 };
-                *field = (&*field / &v)?;
-                Some(YololValue::default())
+                v.push(Instruction::Push(addr));
+                v.push(Instruction::Div);
+                v.push(Instruction::Store(addr));
+                v
             }
 
             Tree::AssignMod(r, l) => {
-                let v = self.process_expr(l)?;
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let mut v = self.process_expr(l);
+                let addr = match **r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => v,
                     _ => unreachable!(),
                 };
-                *field = (&*field % &v)?;
-                Some(YololValue::default())
+                v.push(Instruction::Push(addr));
+                v.push(Instruction::Mod);
+                v.push(Instruction::Store(addr));
+                v
             }
 
             Tree::AssignExp(r, l) => {
-                let v = self.process_expr(l)?;
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let mut v = self.process_expr(l);
+                let addr = match **r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => v,
                     _ => unreachable!(),
                 };
-                let v = field.pow(&v);
-                *field = v?;
-                Some(YololValue::default())
+                v.push(Instruction::Push(addr));
+                v.push(Instruction::Exp);
+                v.push(Instruction::Store(addr));
+                v
             }
 
             Tree::PostInc(r) => {
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let addr = match &**r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => *v,
                     _ => unreachable!(),
                 };
-                Some(field.post_inc())
+                vec![
+                    Instruction::Push(addr),
+                    Instruction::Dup,
+                    Instruction::Inc,
+                    Instruction::Store(addr),
+                ]
             }
             Tree::PostDec(r) => {
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let addr = match &**r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => *v,
                     _ => unreachable!(),
                 };
-                Some(field.post_dec()?)
+                vec![
+                    Instruction::Push(addr),
+                    Instruction::Dup,
+                    Instruction::Dec,
+                    Instruction::Store(addr),
+                ]
             }
             Tree::PreDec(r) => {
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let addr = match &**r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => *v,
                     _ => unreachable!(),
                 };
-                Some(field.pre_dec()?)
+                vec![
+                    Instruction::Push(addr),
+                    Instruction::Inc,
+                    Instruction::Dup,
+                    Instruction::Store(addr),
+                ]
             }
             Tree::PreInc(r) => {
-                let field = match &**r {
-                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => &mut self.variables[*v],
+                let addr = match &**r {
+                    Tree::LocalVariable(v) | Tree::GlobalVariable(v) => *v,
                     _ => unreachable!(),
                 };
-                Some(field.pre_inc())
+                vec![
+                    Instruction::Push(addr),
+                    Instruction::Dec,
+                    Instruction::Dup,
+                    Instruction::Store(addr),
+                ]
             }
             t => unreachable!("process_expr : {:?}", t),
         }
@@ -206,7 +359,14 @@ impl CodeRunner for YololRunner {
                 file.replace("\r\n", "\n")
                     .split('\n')
                     .map(|s| match yolol_parser::line(s) {
-                        Ok(line) => line,
+                        Ok(line) => line
+                            .iter()
+                            .map(|s| self.process(s))
+                            .reduce(|mut a, mut b| {
+                                a.append(&mut b);
+                                a
+                            })
+                            .unwrap_or_default(),
                         Err(err) => {
                             println!("error {} line {}\n{}", self.path, self.pc + 1, err);
                             vec![]
@@ -227,10 +387,11 @@ impl CodeRunner for YololRunner {
             self.pc = 0;
         }
 
-        let stmts = &self.lines.clone()[self.pc];
-        for stmt in stmts {
-            if self.process(&stmt).is_none() {
-                break;
+        let instructions = &    self.lines.clone()[self.pc];
+        if let Some(goto) = self.vm.run(instructions) {
+            if let YololValue::Int(v) = goto {
+                let v: i64 = (&v).into();
+                self.pc = v.clamp(0, 20) as usize;
             }
         }
         /* else if let Err(err) = stmts {

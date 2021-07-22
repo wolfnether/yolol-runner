@@ -1,15 +1,18 @@
-use yolol_devices::value::YololValue;
+use std::collections::VecDeque;
+
 use yolol_devices::value::ValueTrait;
+use yolol_devices::value::YololValue;
 
 #[derive(Debug)]
 pub enum Instruction {
-    LoadValue(Register, YololValue),
-    Load(Register, usize),
+    Dup,
+    Pop,
+    PushValue(YololValue),
+    Push(usize),
     Store(usize),
     Goto,
     Jump1(usize),
-    ///Jump2(Jump if register a is true,Jump if register a is false)
-    Jump2(usize, usize),
+    JumpFalse(usize),
     Or,
     And,
     Eq,
@@ -38,81 +41,168 @@ pub enum Instruction {
     Dec,
 }
 
-#[derive(Debug)]
-pub enum Register {
-    A,
-    B,
-}
-
 #[derive(Debug, Default)]
-pub struct Cpu {
-    register_a: YololValue,
-    register_b: YololValue,
+pub struct VM {
+    stack: VecDeque<YololValue>,
     instructions: Vec<Instruction>,
     ram: Vec<YololValue>,
     pc: usize,
 }
 
-impl Cpu {
+impl VM {
     pub fn reset(&mut self) {
         self.ram.clear();
-        self.register_a = YololValue::default();
-        self.register_b = YololValue::default();
-        self.pc = 0;
+        self.stack.clear();
     }
 
-    pub fn run(&mut self) -> Option<YololValue> {
+    pub fn run(&mut self, instructions: &Vec<Instruction>) -> Option<YololValue> {
+        self.stack.clear();
         while let Some(instruction) = self.instructions.get(self.pc) {
             match instruction {
-                Instruction::LoadValue(register, value) => match register {
-                    Register::A => self.register_a = value.clone(),
-                    Register::B => self.register_a = value.clone(),
-                },
-                Instruction::Load(register, adress) => {
+                Instruction::PushValue(value) => self.stack.push_back(value.clone()),
+                Instruction::Push(adress) => {
                     while self.ram.len() <= *adress {
                         self.ram.push(YololValue::default())
                     }
                     let value = self.ram[*adress].clone();
-                    match register {
-                        Register::A => self.register_a = value,
-                        Register::B => self.register_a = value,
-                    }
+                    self.stack.push_back(value.clone());
                 }
                 Instruction::Store(adress) => {
                     while self.ram.len() <= *adress {
                         self.ram.push(YololValue::default())
                     }
-                    self.ram[*adress] = self.register_a.clone();
+                    self.ram[*adress] = self.stack.pop_back()?;
                 }
-                Instruction::Goto => return Some(self.register_a.clone()),
-                Instruction::Or => self.register_a = self.register_a.or(&self.register_b),
-                Instruction::And => self.register_a = self.register_a.or(&self.register_b),
-                Instruction::Eq => self.register_a = (self.register_a == self.register_b).into(),
-                Instruction::Ne => self.register_a = (self.register_a != self.register_b).into(),
-                Instruction::Lt => self.register_a = (self.register_a > self.register_b).into(),
-                Instruction::Gt => self.register_a = (self.register_a < self.register_b).into(),
-                Instruction::Lte => self.register_a = (self.register_a >= self.register_b).into(),
-                Instruction::Gte => self.register_a = (self.register_a <= self.register_b).into(),
-                Instruction::Add => self.register_a = &self.register_a + &self.register_b,
-                Instruction::Sub => self.register_a =( &self.register_a - &self.register_b)?,
-                Instruction::Mul => self.register_a =( &self.register_a * &self.register_b)?,
-                Instruction::Div => self.register_a =( &self.register_a / &self.register_b)?,
-                Instruction::Mod => self.register_a = (&self.register_a % &self.register_b)?,
-                Instruction::Exp => self.register_a = self.register_a.pow(&self.register_b)?,
-                Instruction::Abs => self.register_a = self.register_a.abs()?,
-                Instruction::Sqrt => self.register_a = self.register_a.abs()?,
-                Instruction::Sin =>self.register_a = self.register_a.sin()?,
-                Instruction::Cos => self.register_a = self.register_a.cos()?,
-                Instruction::Tan =>self.register_a = self.register_a.tan()?,
-                Instruction::Asin =>self.register_a = self.register_a.asin()?,
-                Instruction::Acos =>self.register_a = self.register_a.acos()?,
-                Instruction::Atan => self.register_a = self.register_a.atan()?,
-                Instruction::Not =>self.register_a = self.register_a.not().into(),
-                Instruction::Fac =>self.register_a = self.register_a.fac()?,
-                Instruction::Inc => todo!(),
-                Instruction::Dec => todo!(),
+                Instruction::Goto => return Some(self.stack.pop_back()?),
+                Instruction::Or => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back(a.or(&b))
+                }
+                Instruction::And => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back(a.and(&b))
+                }
+                Instruction::Eq => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((a == b).into())
+                }
+                Instruction::Ne => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((a != b).into())
+                }
+                Instruction::Lt => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((a > b).into())
+                }
+                Instruction::Gt => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((a < b).into())
+                }
+                Instruction::Lte => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((a >= b).into())
+                }
+                Instruction::Gte => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((a <= b).into())
+                }
+                Instruction::Add => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back(&a + &b)
+                }
+                Instruction::Sub => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((&a - &b)?)
+                }
+                Instruction::Mul => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((&a - &b)?)
+                }
+                Instruction::Div => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((&a - &b)?)
+                }
+                Instruction::Mod => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((&a - &b)?)
+                }
+                Instruction::Exp => {
+                    let b = self.stack.pop_back()?;
+                    let a = self.stack.pop_back()?;
+                    self.stack.push_back((&a - &b)?)
+                }
+                Instruction::Abs => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.abs()?;
+                }
+
+                Instruction::Sqrt => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.sqrt()?;
+                }
+                Instruction::Sin => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.sin()?;
+                }
+                Instruction::Cos => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.cos()?;
+                }
+                Instruction::Tan => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.tan()?;
+                }
+                Instruction::Asin => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.asin()?;
+                }
+                Instruction::Acos => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.acos()?;
+                }
+                Instruction::Atan => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.atan()?;
+                }
+                Instruction::Not => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.not().into();
+                }
+                Instruction::Fac => {
+                    let v = self.stack.back()?;
+                    *self.stack.back_mut()? = v.fac()?;
+                }
+                Instruction::Inc => {
+                    self.stack.back_mut()?.pre_inc();
+                }
+                Instruction::Dec => {
+                    self.stack.back_mut()?.pre_dec()?;
+                }
                 Instruction::Jump1(i) => self.pc = *i,
-                Instruction::Jump2(_, _) => todo!(),
+                Instruction::JumpFalse(i) => {
+                    if self.stack.pop_back()? == true.into() {
+                        self.pc = *i
+                    }
+                }
+                Instruction::Dup => {
+                    self.stack.push_back(self.stack.back()?.clone());
+                }
+                Instruction::Pop => {
+                    self.stack.pop_back();
+                }
             }
         }
         None
