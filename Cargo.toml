@@ -12,3 +12,7 @@ description = "lib for parsing and running yolol script"
 "peg" = "0.7.0"
 lazy_static = "1.4.0"
 parking_lot = "0.11.1"
+
+[profile.release.bin]
+debug = 1
+codegen-units = 1
