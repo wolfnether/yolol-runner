@@ -3,23 +3,29 @@ mod parser;
 mod vm;
 
 use std::fs::read_to_string;
-use std::rc::Rc;
 
 use ast::Tree;
+use lazy_static::__Deref;
+use mimalloc::MiMalloc;
 use parser::yolol_parser;
 use vm::Instruction;
 use vm::VM;
 use yolol_devices::devices::chip::CodeRunner;
 use yolol_devices::field::Field;
+use yolol_devices::value::ValueTrait;
 use yolol_devices::value::YololValue;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[derive(Debug, Default)]
 pub struct YololRunner {
-    lines: Rc<Vec<Vec<Instruction>>>,
-    variables: Vec<YololValue>,
+    lines: [Vec<Instruction>; 20],
     pc: usize,
     path: String,
     vm: VM,
+    variables: Vec<YololValue>,
+    stack: Vec<YololValue>,
 }
 
 impl YololRunner {
@@ -40,7 +46,7 @@ impl YololRunner {
                     .unwrap_or_default();
                 p.push(Instruction::JumpFalse(s.len()));
                 p.append(&mut s);
-                s
+                p
             }
             Tree::Goto(t) => {
                 let mut v = self.process_expr(t);
@@ -125,36 +131,36 @@ impl YololRunner {
                 b
             }
             Tree::Add(r, l) => {
-                let mut a = self.process_expr(r);
-                let mut b = self.process_expr(l);
+                let mut b = self.process_expr(r);
+                let mut a = self.process_expr(l);
                 b.append(&mut a);
                 b.push(Instruction::Add);
                 b
             }
             Tree::Sub(r, l) => {
-                let mut a = self.process_expr(r);
-                let mut b = self.process_expr(l);
+                let mut b = self.process_expr(r);
+                let mut a = self.process_expr(l);
                 b.append(&mut a);
                 b.push(Instruction::Sub);
                 b
             }
             Tree::Mul(r, l) => {
-                let mut a = self.process_expr(r);
-                let mut b = self.process_expr(l);
+                let mut b = self.process_expr(r);
+                let mut a = self.process_expr(l);
                 b.append(&mut a);
                 b.push(Instruction::Mul);
                 b
             }
             Tree::Div(r, l) => {
-                let mut a = self.process_expr(r);
-                let mut b = self.process_expr(l);
+                let mut b = self.process_expr(r);
+                let mut a = self.process_expr(l);
                 b.append(&mut a);
                 b.push(Instruction::Div);
                 b
             }
             Tree::Mod(r, l) => {
-                let mut a = self.process_expr(r);
-                let mut b = self.process_expr(l);
+                let mut b = self.process_expr(r);
+                let mut a = self.process_expr(l);
                 b.append(&mut a);
                 b.push(Instruction::Mod);
                 b
@@ -216,8 +222,8 @@ impl YololRunner {
                 a
             }
             Tree::Exp(r, l) => {
-                let mut a = self.process_expr(r);
-                let mut b = self.process_expr(l);
+                let mut a = self.process_expr(l);
+                let mut b = self.process_expr(r);
                 b.append(&mut a);
                 b.push(Instruction::Exp);
                 b
@@ -302,8 +308,8 @@ impl YololRunner {
                 };
                 vec![
                     Instruction::Push(addr),
-                    Instruction::Dup,
                     Instruction::Inc,
+                    Instruction::Dup,
                     Instruction::Store(addr),
                 ]
             }
@@ -314,8 +320,8 @@ impl YololRunner {
                 };
                 vec![
                     Instruction::Push(addr),
-                    Instruction::Dup,
                     Instruction::Dec,
+                    Instruction::Dup,
                     Instruction::Store(addr),
                 ]
             }
@@ -346,73 +352,248 @@ impl YololRunner {
             t => unreachable!("process_expr : {:?}", t),
         }
     }
+
+    pub fn run(&mut self) -> Option<YololValue> {
+        self.stack.clear();
+        let mut pc = 0;
+        let instructions = &self.lines[self.pc];
+        while instructions.len() > pc as usize {
+            let instruction = &instructions[pc as usize];
+            //println!("{:?}", instruction);
+            match instruction {
+                Instruction::PushValue(value) => self.stack.push(value.clone()),
+                Instruction::Push(adress) => {
+                    let value = self.variables[*adress].clone();
+                    self.stack.push(value);
+                }
+                Instruction::Store(adress) => {
+                    self.variables[*adress] = self.stack.pop()?;
+                }
+                Instruction::Goto => return self.stack.pop(),
+                Instruction::Or => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push(a.or(&b))
+                }
+                Instruction::And => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push(a.and(&b))
+                }
+                Instruction::Eq => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((a == b).into())
+                }
+                Instruction::Ne => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((a != b).into())
+                }
+                Instruction::Lt => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((a > b).into())
+                }
+                Instruction::Gt => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((a < b).into())
+                }
+                Instruction::Lte => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((a >= b).into())
+                }
+                Instruction::Gte => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((a <= b).into())
+                }
+                Instruction::Add => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push(&a + &b)
+                }
+                Instruction::Sub => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((&a - &b)?)
+                }
+                Instruction::Mul => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((&a * &b)?)
+                }
+                Instruction::Div => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((&a / &b)?)
+                }
+                Instruction::Mod => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push((&a % &b)?)
+                }
+                Instruction::Exp => {
+                    let b = self.stack.pop()?;
+                    let a = self.stack.pop()?;
+                    self.stack.push(a.pow(&b)?);
+                }
+                Instruction::Abs => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.abs()?;
+                }
+
+                Instruction::Sqrt => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.sqrt()?;
+                }
+                Instruction::Sin => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.sin()?;
+                }
+                Instruction::Cos => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.cos()?;
+                }
+                Instruction::Tan => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.tan()?;
+                }
+                Instruction::Asin => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.asin()?;
+                }
+                Instruction::Acos => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.acos()?;
+                }
+                Instruction::Atan => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.atan()?;
+                }
+                Instruction::Not => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.not();
+                }
+                Instruction::Fac => {
+                    let v = self.stack.last()?;
+                    *self.stack.last_mut()? = v.fac()?;
+                }
+                Instruction::Inc => {
+                    let mut i = (self.stack.pop()?).clone();
+                    i.pre_inc();
+                    self.stack.push(i);
+                }
+                Instruction::Dec => {
+                    let mut i = (self.stack.pop()?).clone();
+                    i.pre_dec();
+                    self.stack.push(i);
+                }
+                Instruction::Jump(i) => pc = *i as isize,
+                Instruction::JumpFalse(i) => {
+                    let b: bool = (&self.stack.pop()?).into();
+                    if !b {
+                        pc += *i as isize;
+                    }
+                }
+                Instruction::Dup => {
+                    self.stack.push(self.stack.last()?.clone());
+                }
+                Instruction::Pop => {
+                    self.stack.pop();
+                }
+            }
+            pc += 1;
+        }
+        None
+    }
 }
 
 impl CodeRunner for YololRunner {
     fn parse(&mut self, path: &str) -> Option<()> {
         self.path = path.to_string();
         if let Ok(file) = read_to_string(path) {
-            self.lines = Rc::new(
-                file.replace("\r\n", "\n")
-                    .split('\n')
-                    .map(|s| match yolol_parser::line(s) {
-                        Ok(line) => line
-                            .iter()
-                            .map(|s| self.process(s))
-                            .reduce(|mut a, mut b| {
-                                a.append(&mut b);
-                                a
-                            })
-                            .unwrap_or_default(),
-                        Err(err) => {
-                            println!("error {} line {}\n{}", self.path, self.pc + 1, err);
-                            vec![]
-                        }
-                    })
-                    .collect(),
-            );
+            let lines: Vec<Vec<Instruction>> = file
+                .replace("\r\n", "\n")
+                .split('\n')
+                .map(|s| match yolol_parser::line(s) {
+                    Ok(line) => line
+                        .iter()
+                        .map(|s| self.process(s))
+                        .reduce(|mut a, mut b| {
+                            a.append(&mut b);
+                            a
+                        })
+                        .unwrap_or_default(),
+                    Err(err) => {
+                        println!("error {} line {}\n{}", self.path, self.pc + 1, err);
+                        vec![]
+                    }
+                })
+                .take(20)
+                .collect();
+
+            for (i, line) in lines.iter().enumerate() {
+                self.lines[i] = line.clone();
+            }
+
+            for i in lines.len()..20 {
+                self.lines[i] = vec![];
+            }
+
             for _ in 0..*crate::parser::I.lock() {
                 self.variables.push(YololValue::default());
             }
+            self.stack = Vec::with_capacity(32);
             return Some(());
         }
         None
     }
 
     fn step(&mut self) {
-        if self.lines.len() <= self.pc {
+        if self.pc == 20 {
             self.pc = 0;
         }
-
-        let instructions = &self.lines.clone()[self.pc];
-        if let Some( YololValue::Int(v)) = self.vm.run(instructions) {
-                let v: i64 = (&v).into();
-                self.pc = v.clamp(0, 20) as usize;
-            
+        if self.lines[self.pc].is_empty() {
+            self.pc += 1;
+            return;
         }
-        /* else if let Err(err) = stmts {
-            println!("error {} line {}\n{}", self.path, self.pc + 1, err);
-        }*/
-        self.pc += 1;
+
+        if let Some(YololValue::Int(v)) = self.run() {
+            let v: i64 = (&v).into();
+            self.pc = (v - 1).clamp(0, 19) as usize;
+        } else {
+            self.pc += 1;
+        }
     }
 
     fn update_globals(&mut self, globals: Vec<Field>) {
-        /*self.globals.clear();
+        let mut vec = vec![];
         for global in globals {
-            self.globals
-                .insert(global.name().to_lowercase(), (*global).clone());
-        }*/
-        //self.globals = globals;
+            let k = global.name().to_lowercase();
+            let adress = crate::parser::GLOBALS.lock()[&k];
+
+            while vec.len() <= adress {
+                vec.push(YololValue::default())
+            }
+
+            vec[adress] = (*global).clone();
+        }
+        self.variables = vec;
     }
 
     fn get_global(&self) -> Vec<Field> {
         let mut v = vec![];
-        /*for (name, value) in &self.globals {
+        for (name, adress) in crate::parser::GLOBALS.lock().deref() {
             let mut global = Field::default();
             global.set_name(name.clone());
-            *global = value.clone();
+            if let Some(value) = self.variables.get(*adress) {
+                *global = (*value).clone();
+            }
             v.push(global);
-        }*/
+        }
         v
     }
 }

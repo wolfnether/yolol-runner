@@ -1,22 +1,24 @@
 #![allow(clippy::all)]
 
-use crate::ast::Tree;
-use lazy_static::lazy_static;
-use parking_lot::Mutex;
 use std::collections::BTreeMap;
 
+use lazy_static::lazy_static;
+use parking_lot::Mutex;
+
+use crate::ast::Tree;
+
 lazy_static! {
-    pub static ref GLOBAL: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
-    pub static ref LOCAL: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+    pub static ref GLOBALS: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+    pub static ref LOCALS: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
     pub static ref I: Mutex<usize> = Mutex::new(0);
 }
 
 fn get_local(key: &str) -> usize {
     let key = &key.to_lowercase();
-    if LOCAL.lock().contains_key(key) {
-        LOCAL.lock()[key]
+    if LOCALS.lock().contains_key(key) {
+        LOCALS.lock()[key]
     } else {
-        LOCAL.lock().insert(key.to_string(), *I.lock());
+        LOCALS.lock().insert(key.to_string(), *I.lock());
         *I.lock() += 1;
         *I.lock() - 1
     }
@@ -24,10 +26,10 @@ fn get_local(key: &str) -> usize {
 
 fn get_global(key: &str) -> usize {
     let key = &key.to_lowercase();
-    if GLOBAL.lock().contains_key(key) {
-        GLOBAL.lock()[key]
+    if GLOBALS.lock().contains_key(key) {
+        GLOBALS.lock()[key]
     } else {
-        GLOBAL.lock().insert(key.to_string(), *I.lock());
+        GLOBALS.lock().insert(key.to_string(), *I.lock());
         *I.lock() += 1;
         *I.lock() - 1
     }
@@ -115,7 +117,7 @@ peg::parser! {
             / !("if" / "end"/ "goto" ) s:$((a:alpha() b:alphanumeric()*)) {Tree::LocalVariable(get_local(s))}
         rule litteral() -> Tree =
             "-" d:$(digit()*) "." r:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();let r: i64 = match r.len() {1 => r.parse::<i64>().unwrap() * 100,2 => r.parse::<i64>().unwrap() * 10,_ => r[0..r.len().min(3)].parse().unwrap(),};Tree::Numerical((d * 1000).saturating_sub(r))}
-            / "-" d:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();Tree::Numerical(d * 1000)}
+            / "-" d:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();Tree::Numerical(d.clamp(-9_223_372_036_854_775,9_223_372_036_854_775) * 1000)}
             / d:$(digit()*) "." r:$(digit()+) {let d : i64 = d.parse().unwrap();let r: i64 = match r.len() {1 => r.parse::<i64>().unwrap() * 100,2 => r.parse::<i64>().unwrap() * 10,_ => r[0..r.len().min(3)].parse().unwrap(),};Tree::Numerical((d * 1000).saturating_add(r))}
             / d:$(digit()+) {let d : i64 = d.parse().unwrap();Tree::Numerical(d * 1000)}
             / "\"" s:$([^ '"']*) "\"" {Tree::String(s.to_string())}
