@@ -1,4 +1,39 @@
+#![allow(clippy::all)]
+
+use std::collections::BTreeMap;
+
+use lazy_static::lazy_static;
+use parking_lot::Mutex;
+
 use crate::ast::Tree;
+
+lazy_static! {
+    pub static ref GLOBALS: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+    pub static ref LOCALS: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+    pub static ref I: Mutex<usize> = Mutex::new(0);
+}
+
+fn get_local(key: &str) -> usize {
+    let key = &key.to_lowercase();
+    if LOCALS.lock().contains_key(key) {
+        LOCALS.lock()[key]
+    } else {
+        LOCALS.lock().insert(key.to_string(), *I.lock());
+        *I.lock() += 1;
+        *I.lock() - 1
+    }
+}
+
+fn get_global(key: &str) -> usize {
+    let key = &key.to_lowercase();
+    if GLOBALS.lock().contains_key(key) {
+        GLOBALS.lock()[key]
+    } else {
+        GLOBALS.lock().insert(key.to_string(), *I.lock());
+        *I.lock() += 1;
+        *I.lock() - 1
+    }
+}
 
 peg::parser! {
     pub grammar yolol_parser() for str{
@@ -17,7 +52,7 @@ peg::parser! {
         pub rule line() -> Vec<Tree> = s:(" "* s:stmt() {s})* " "* {s} //ls:( s:stmt() {s})* [_] {let mut s = vec![s]; s.append(&mut ls.clone());s}
         rule stmt() -> Tree = goto() / if_then_end() / (a:assignment() {a}) / comment() / expression()  // "" {Tree::Empty}
         rule goto() -> Tree = "goto" ss() e:expression() {Tree::Goto(e.into())}
-        rule if_then_end() -> Tree = "if" ss() p:expression() ss() "then" l:line() ss() e:("else" ss() l:line() ss() {l})? "end" {
+        rule if_then_end() -> Tree = "if" ss() p:expression() ss() "then" l:line() ss() e:("else" l:line() ss() {l})? "end" {
             if let Some(e) = e {
                 Tree::IfThenElse(p.into(), l, e)
             } else {
@@ -78,11 +113,11 @@ peg::parser! {
 
         rule comment() -> Tree = "//" c:$(([^'\n']/ [^_])* ) {Tree::Comment(c.to_string())}
         rule variable() -> Tree =
-            ":" s:$(b:alphanumeric()*) {Tree::GlobalVariable(s.to_string())}
-            / !("if" / "end"/ "goto" ) s:$((a:alpha() b:alphanumeric()*)) {Tree::LocalVariable(s.to_string())}
+            ":" s:$(b:alphanumeric()*) {Tree::GlobalVariable(get_global(s))}
+            / !("if"/ "else" / "end"/ "goto") s:$((a:alpha() b:alphanumeric()*)) {Tree::LocalVariable(get_local(s))}
         rule litteral() -> Tree =
             "-" d:$(digit()*) "." r:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();let r: i64 = match r.len() {1 => r.parse::<i64>().unwrap() * 100,2 => r.parse::<i64>().unwrap() * 10,_ => r[0..r.len().min(3)].parse().unwrap(),};Tree::Numerical((d * 1000).saturating_sub(r))}
-            / "-" d:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();Tree::Numerical(d * 1000)}
+            / "-" d:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();Tree::Numerical(d.clamp(-9_223_372_036_854_775,9_223_372_036_854_775) * 1000)}
             / d:$(digit()*) "." r:$(digit()+) {let d : i64 = d.parse().unwrap();let r: i64 = match r.len() {1 => r.parse::<i64>().unwrap() * 100,2 => r.parse::<i64>().unwrap() * 10,_ => r[0..r.len().min(3)].parse().unwrap(),};Tree::Numerical((d * 1000).saturating_add(r))}
             / d:$(digit()+) {let d : i64 = d.parse().unwrap();Tree::Numerical(d * 1000)}
             / "\"" s:$([^ '"']*) "\"" {Tree::String(s.to_string())}
