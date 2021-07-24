@@ -372,114 +372,114 @@ impl YololRunner {
                 Instruction::Goto => return self.stack.pop(),
                 Instruction::Or => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push(a.or(&b))
+                    let a = self.stack.last_mut()?;
+                    *a =a.or(&b)
                 }
                 Instruction::And => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push(a.and(&b))
+                    let a = self.stack.last_mut()?;
+                    *a =a.and(&b)
                 }
                 Instruction::Eq => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((a == b).into())
+                    let a = self.stack.last_mut()?;
+                    *a =(&*a == &b).into()
                 }
                 Instruction::Ne => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((a != b).into())
+                    let a = self.stack.last_mut()?;
+                    *a =(&*a != &b).into()
                 }
                 Instruction::Lt => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((a > b).into())
+                    let a = self.stack.last_mut()?;
+                    *a =(&*a > &b).into()
                 }
                 Instruction::Gt => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((a < b).into())
+                    let a = self.stack.last_mut()?;
+                    *a =(&*a < &b).into()
                 }
                 Instruction::Lte => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((a >= b).into())
+                    let a = self.stack.last_mut()?;
+                    *a =(&*a >= &b).into()
                 }
                 Instruction::Gte => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((a <= b).into())
+                    let a = self.stack.last_mut()?;
+                    *a =(&*a <= &b).into()
                 }
                 Instruction::Add => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push(&a + &b)
+                    let a = self.stack.last_mut()?;
+                    *a =&*a + &b
                 }
                 Instruction::Sub => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((&a - &b)?)
+                    let a = self.stack.last_mut()?;
+                    *a =(&*a - &b)?
                 }
                 Instruction::Mul => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((&a * &b)?)
+                    let a = self.stack.last_mut()?;
+                    *a =(&*a * &b)?
                 }
                 Instruction::Div => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((&a / &b)?)
+                    let a = self.stack.last_mut()?;
+                    *a = (&*a / &b)?;
                 }
                 Instruction::Mod => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push((&a % &b)?)
+                    let a = self.stack.last_mut()?;
+                    *a = (&*a % &b)?;
                 }
                 Instruction::Exp => {
                     let b = self.stack.pop()?;
-                    let a = self.stack.pop()?;
-                    self.stack.push(a.pow(&b)?);
+                    let a = self.stack.last_mut()?;
+                    *a = a.pow(&b)?;
                 }
                 Instruction::Abs => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.abs()?;
+                    let v = self.stack.last_mut()?;
+                    *v = v.abs()?;
                 }
 
                 Instruction::Sqrt => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.sqrt()?;
+                    let v = self.stack.last_mut()?;
+                    *v = v.sqrt()?;
                 }
                 Instruction::Sin => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.sin()?;
+                    let v = self.stack.last_mut()?;
+                    *v = v.sin()?;
                 }
                 Instruction::Cos => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.cos()?;
+                    let v = self.stack.last_mut()?;
+                    *v = v.cos()?;
                 }
                 Instruction::Tan => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.tan()?;
+                    let v = self.stack.last_mut()?;
+                    *v = v.tan()?;
                 }
                 Instruction::Asin => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.asin()?;
+                    let v = self.stack.last_mut()?;
+                    *v = v.asin()?;
                 }
                 Instruction::Acos => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.acos()?;
+                    let v = self.stack.last_mut()?;
+                    *v = v.acos()?;
                 }
                 Instruction::Atan => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.atan()?;
+                    let v = self.stack.last_mut()?;
+                    *v = v.atan()?;
                 }
                 Instruction::Not => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.not();
+                    let v = self.stack.last_mut()?;
+                    *v = v.not();
                 }
                 Instruction::Fac => {
-                    let v = self.stack.last()?;
-                    *self.stack.last_mut()? = v.fac()?;
+                    let v = self.stack.last_mut()?;
+                    *v = v.fac()?;
                 }
                 Instruction::Inc => {
                     let mut i = (self.stack.pop()?).clone();
