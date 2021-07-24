@@ -528,7 +528,6 @@ impl YololRunner {
                 Instruction::Pop => {
                     self.stack.pop();
                 }
-                Instruction::Error => return None,
             }
             pc += 1;
         }
@@ -677,10 +676,6 @@ fn optimize(mut insts: Vec<Instruction>, ram: &mut [Type]) -> Option<Vec<Instruc
                 Instruction::Inc | Instruction::Dec => {
                     stack.pop()?;
                     stack.push((i, Type::Int(Bool::Unknown)));
-                }
-                Instruction::Error => {
-                    error = true;
-                    break;
                 }
                 Instruction::JumpFalse(rel) => {
                     let (_, t) = stack.pop()?;
