@@ -52,7 +52,7 @@ peg::parser! {
         pub rule line() -> Vec<Tree> = s:(" "* s:stmt() {s})* " "* {s} //ls:( s:stmt() {s})* [_] {let mut s = vec![s]; s.append(&mut ls.clone());s}
         rule stmt() -> Tree = goto() / if_then_end() / (a:assignment() {a}) / comment() / expression()  // "" {Tree::Empty}
         rule goto() -> Tree = "goto" ss() e:expression() {Tree::Goto(e.into())}
-        rule if_then_end() -> Tree = "if" ss() p:expression() ss() "then" l:line() ss() e:("else" ss() l:line() ss() {l})? "end" {
+        rule if_then_end() -> Tree = "if" ss() p:expression() ss() "then" l:line() ss() e:("else" l:line() ss() {l})? "end" {
             if let Some(e) = e {
                 Tree::IfThenElse(p.into(), l, e)
             } else {
@@ -114,7 +114,7 @@ peg::parser! {
         rule comment() -> Tree = "//" c:$(([^'\n']/ [^_])* ) {Tree::Comment(c.to_string())}
         rule variable() -> Tree =
             ":" s:$(b:alphanumeric()*) {Tree::GlobalVariable(get_global(s))}
-            / !("if" / "end"/ "goto" ) s:$((a:alpha() b:alphanumeric()*)) {Tree::LocalVariable(get_local(s))}
+            / !("if"/ "else" / "end"/ "goto") s:$((a:alpha() b:alphanumeric()*)) {Tree::LocalVariable(get_local(s))}
         rule litteral() -> Tree =
             "-" d:$(digit()*) "." r:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();let r: i64 = match r.len() {1 => r.parse::<i64>().unwrap() * 100,2 => r.parse::<i64>().unwrap() * 10,_ => r[0..r.len().min(3)].parse().unwrap(),};Tree::Numerical((d * 1000).saturating_sub(r))}
             / "-" d:$(digit()+) {let d : i64 = ("-".to_string()+d).parse().unwrap();Tree::Numerical(d.clamp(-9_223_372_036_854_775,9_223_372_036_854_775) * 1000)}

@@ -48,6 +48,30 @@ impl YololRunner {
                 p.append(&mut s);
                 p
             }
+            Tree::IfThenElse(p, t, f) => {
+                let mut p = self.process_expr(p);
+                let mut t = t
+                    .iter()
+                    .map(|s| self.process(s))
+                    .reduce(|mut a, mut b| {
+                        a.append(&mut b);
+                        a
+                    })
+                    .unwrap_or_default();
+                let mut f = f
+                    .iter()
+                    .map(|s| self.process(s))
+                    .reduce(|mut a, mut b| {
+                        a.append(&mut b);
+                        a
+                    })
+                    .unwrap_or_default();
+                p.push(Instruction::JumpFalse(t.len() + 1));
+                p.append(&mut t);
+                p.push(Instruction::Jump(f.len()));
+                p.append(&mut f);
+                p
+            }
             Tree::Goto(t) => {
                 let mut v = self.process_expr(t);
                 v.push(Instruction::Goto);
@@ -373,57 +397,57 @@ impl YololRunner {
                 Instruction::Or => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =a.or(&b)
+                    *a = a.or(&b)
                 }
                 Instruction::And => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =a.and(&b)
+                    *a = a.and(&b)
                 }
                 Instruction::Eq => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =(&*a == &b).into()
+                    *a = (*a == b).into()
                 }
                 Instruction::Ne => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =(&*a != &b).into()
+                    *a = (*a != b).into()
                 }
                 Instruction::Lt => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =(&*a > &b).into()
+                    *a = (*a > b).into()
                 }
                 Instruction::Gt => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =(&*a < &b).into()
+                    *a = (*a < b).into()
                 }
                 Instruction::Lte => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =(&*a >= &b).into()
+                    *a = (*a >= b).into()
                 }
                 Instruction::Gte => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =(&*a <= &b).into()
+                    *a = (*a <= b).into()
                 }
                 Instruction::Add => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =&*a + &b
+                    *a = &*a + &b
                 }
                 Instruction::Sub => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =(&*a - &b)?
+                    *a = (&*a - &b)?
                 }
                 Instruction::Mul => {
                     let b = self.stack.pop()?;
                     let a = self.stack.last_mut()?;
-                    *a =(&*a * &b)?
+                    *a = (&*a * &b)?
                 }
                 Instruction::Div => {
                     let b = self.stack.pop()?;
@@ -504,6 +528,7 @@ impl YololRunner {
                 Instruction::Pop => {
                     self.stack.pop();
                 }
+                Instruction::Error => return None,
             }
             pc += 1;
         }
@@ -511,11 +536,189 @@ impl YololRunner {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Type {
+    String,
+    Int(Bool),
+    Unkown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Bool {
+    True,
+    False,
+    Unknown,
+}
+
+fn optimize(mut insts: Vec<Instruction>, ram: &mut [Type]) -> Option<Vec<Instruction>> {
+    let mut error = true;
+    while error {
+        let mut stack: Vec<(usize, Type)> = Vec::new();
+        let mut i = 0;
+        let mut v = vec![];
+        let mut jump = 0;
+        error = false;
+        for (c, inst) in insts.iter().enumerate() {
+            if jump != 0 {
+                jump -= 1;
+                continue;
+            }
+            match &inst {
+                Instruction::Dup => {
+                    let v = stack.pop()?;
+                    stack.push((i, v.1));
+                    stack.push(v);
+                }
+                Instruction::Pop => {
+                    stack.pop()?;
+                }
+                Instruction::PushValue(v) => match v {
+                    YololValue::String(_) => stack.push((i, Type::String)),
+                    YololValue::Int(v) => {
+                        if v.into() {
+                            stack.push((i, Type::Int(Bool::True)))
+                        } else {
+                            stack.push((i, Type::Int(Bool::False)))
+                        }
+                    }
+                },
+                Instruction::Push(a) => stack.push((i, ram[*a])),
+                Instruction::Store(a) => ram[*a] = stack.pop()?.1,
+                Instruction::Goto => {
+                    if stack.pop()?.1 == Type::String {
+                        error = true;
+                        break;
+                    }
+                }
+                Instruction::Or => {
+                    let (_, a) = stack.pop()?;
+                    let (_, b) = stack.pop()?;
+                    if a == Type::Int(Bool::Unknown) || b == Type::Int(Bool::Unknown) {
+                        stack.push((i, Type::Int(Bool::Unknown)));
+                    } else if (a == Type::String || a == Type::Int(Bool::False))
+                        && (b == Type::String || b == Type::Int(Bool::False))
+                    {
+                        stack.push((i, Type::Int(Bool::False)));
+                    } else {
+                        stack.push((i, Type::Int(Bool::True)));
+                    }
+                }
+                Instruction::And => {
+                    let (_, a) = stack.pop()?;
+                    let (_, b) = stack.pop()?;
+                    if a == Type::Int(Bool::Unknown) || b == Type::Int(Bool::Unknown) {
+                        stack.push((i, Type::Int(Bool::Unknown)));
+                    } else if (a == Type::String || a == Type::Int(Bool::False))
+                        || (b == Type::String || b == Type::Int(Bool::False))
+                    {
+                        stack.push((i, Type::Int(Bool::False)));
+                    } else {
+                        stack.push((i, Type::Int(Bool::True)));
+                    }
+                }
+                Instruction::Eq
+                | Instruction::Ne
+                | Instruction::Lt
+                | Instruction::Gt
+                | Instruction::Lte
+                | Instruction::Gte => {
+                    stack.pop()?;
+                    stack.pop()?;
+                    stack.push((i, Type::Int(Bool::Unknown)));
+                }
+                Instruction::Add | Instruction::Sub => {
+                    let a = stack.pop()?;
+                    let b = stack.pop()?;
+                    if a.1 == Type::String || b.1 == Type::String {
+                        stack.push((i, Type::String));
+                    } else {
+                        stack.push((i, Type::Int(Bool::Unknown)));
+                    }
+                }
+                Instruction::Mul | Instruction::Div | Instruction::Mod | Instruction::Exp => {
+                    let a = stack.pop()?;
+                    let b = stack.pop()?;
+                    if a.1 == Type::String || b.1 == Type::String {
+                        error = true;
+                        break;
+                    } else {
+                        stack.push((i, Type::Int(Bool::Unknown)));
+                    }
+                }
+                Instruction::Abs
+                | Instruction::Sqrt
+                | Instruction::Sin
+                | Instruction::Cos
+                | Instruction::Tan
+                | Instruction::Asin
+                | Instruction::Acos
+                | Instruction::Atan
+                | Instruction::Fac => {
+                    if stack.pop()?.1 == Type::String {
+                        error = true;
+                        break;
+                    } else {
+                        stack.push((i, Type::Int(Bool::Unknown)));
+                    }
+                }
+                Instruction::Not => {
+                    let (_, t) = stack.pop()?;
+                    if t == Type::String {
+                        stack.push((i, Type::String));
+                    } else if t == Type::Int(Bool::False) {
+                        stack.push((i, Type::Int(Bool::True)));
+                    } else if t == Type::Int(Bool::True) {
+                        stack.push((i, Type::Int(Bool::False)));
+                    } else {
+                        stack.push((i, Type::Int(Bool::Unknown)));
+                    }
+                }
+
+                Instruction::Inc | Instruction::Dec => {
+                    stack.pop()?;
+                    stack.push((i, Type::Int(Bool::Unknown)));
+                }
+                Instruction::Error => {
+                    error = true;
+                    break;
+                }
+                Instruction::JumpFalse(rel) => {
+                    let (_, t) = stack.pop()?;
+                    if t == Type::Int(Bool::True) || t == Type::Int(Bool::Unknown) {
+                        let mut ret = optimize(insts[c + 1..c + *rel + 1].to_vec(), ram)?;
+                        if t == Type::Int(Bool::Unknown) {
+                            i += 1;
+                            v.push(inst.clone());
+                        }
+
+                        i += ret.len();
+                        v.append(&mut ret);
+                    }
+                    jump = *rel;
+                    continue;
+                }
+                _ => (),
+            }
+            v.push(inst.clone());
+            i += 1;
+        }
+        if !stack.is_empty() {
+            error = true;
+            for (i, _) in stack.iter().rev() {
+                v.remove(*i);
+            }
+        }
+        insts = v;
+    }
+
+    Some(insts)
+}
+
 impl CodeRunner for YololRunner {
     fn parse(&mut self, path: &str) -> Option<()> {
         self.path = path.to_string();
         if let Ok(file) = read_to_string(path) {
-            let lines: Vec<Vec<Instruction>> = file
+            let mut lines: Vec<Vec<Instruction>> = file
                 .replace("\r\n", "\n")
                 .split('\n')
                 .map(|s| match yolol_parser::line(s) {
@@ -534,10 +737,15 @@ impl CodeRunner for YololRunner {
                 })
                 .take(20)
                 .collect();
-
             for (i, line) in lines.iter().enumerate() {
-                self.lines[i] = line.clone();
+                let mut ram = vec![];
+                for _ in 0..*crate::parser::I.lock() {
+                    ram.push(Type::Int(Bool::Unknown));
+                }
+                let line = optimize(line.clone(), &mut ram)?;
+                self.lines[i] = line;
             }
+            lines = self.lines.to_vec();
 
             for i in lines.len()..20 {
                 self.lines[i] = vec![];
@@ -546,6 +754,7 @@ impl CodeRunner for YololRunner {
             for _ in 0..*crate::parser::I.lock() {
                 self.variables.push(YololValue::default());
             }
+
             self.stack = Vec::with_capacity(32);
             return Some(());
         }
